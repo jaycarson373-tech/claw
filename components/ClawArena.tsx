@@ -41,7 +41,7 @@ type RoundResult = {
   wallet: string
   payoutPct: number
   solAmount: number
-  tier: "normal" | "glow" | "super"
+  tier: "normal" | "super" | "mega"
   ballColor: string
   proof: string
 }
@@ -51,12 +51,12 @@ type WinnerRow = RoundResult & {
 }
 
 const HOLDERS: Holder[] = [
-  { wallet: "9cL4...r8QP", supply: 18_400, color: "#ffd166" },
+  { wallet: "9cL4...r8QP", supply: 18_400, color: "#fff0a6" },
   { wallet: "4mVy...K2a9", supply: 9_800, color: "#7dd3fc" },
-  { wallet: "HE2p...xM11", supply: 7_100, color: "#fca5a5" },
-  { wallet: "2Xn8...PqR7", supply: 5_600, color: "#bef264" },
-  { wallet: "G7sz...T44d", supply: 4_200, color: "#c084fc" },
-  { wallet: "Aar1...zZ90", supply: 3_050, color: "#fef08a" },
+  { wallet: "HE2p...xM11", supply: 7_100, color: "#ff9fb0" },
+  { wallet: "2Xn8...PqR7", supply: 5_600, color: "#c6ff6f" },
+  { wallet: "G7sz...T44d", supply: 4_200, color: "#d8a8ff" },
+  { wallet: "Aar1...zZ90", supply: 3_050, color: "#ffe27a" },
 ]
 
 type HolderBall = {
@@ -67,17 +67,32 @@ type HolderBall = {
   phase: number
 }
 
-const PAYOUTS = [
+const NORMAL_PAYOUTS = [
   { pct: 1, weight: 36 },
   { pct: 3, weight: 28 },
   { pct: 5, weight: 18 },
   { pct: 8, weight: 9 },
   { pct: 10, weight: 5 },
-  { pct: 15, weight: 3 },
-  { pct: 25, weight: 1 },
+  { pct: 12, weight: 3 },
+  { pct: 15, weight: 1 },
 ]
 
-const slotFlash = [1, 3, 5, 8, 10, 15, 25]
+const SUPER_PAYOUTS = [
+  { pct: 15, weight: 30 },
+  { pct: 20, weight: 24 },
+  { pct: 25, weight: 18 },
+  { pct: 35, weight: 10 },
+  { pct: 50, weight: 4 },
+]
+
+const MEGA_PAYOUTS = [
+  { pct: 50, weight: 20 },
+  { pct: 65, weight: 12 },
+  { pct: 75, weight: 8 },
+  { pct: 100, weight: 2 },
+]
+
+const slotFlash = [1, 3, 5, 8, 10, 15, 20, 25, 35, 50, 75, 100]
 
 function weightedPick<T extends { weight?: number; supply?: number }>(items: T[]) {
   const total = items.reduce((sum, item) => sum + (item.weight ?? item.supply ?? 0), 0)
@@ -101,8 +116,8 @@ function makeProof(seed: string) {
 }
 
 function tierForPct(pct: number): RoundResult["tier"] {
-  if (pct >= 10) return "super"
-  if (pct >= 5) return "glow"
+  if (pct >= 50) return "mega"
+  if (pct >= 15) return "super"
   return "normal"
 }
 
@@ -115,13 +130,16 @@ function secondsLabel(value: number) {
 // Replace this adapter with the real backend round record. The animation only reads this result.
 function resolveRoundResult(treasury: number): RoundResult {
   const holder = weightedPick(HOLDERS)
-  const payoutPct = weightedPick(PAYOUTS).pct
+  const tierRoll = Math.random()
+  const table = tierRoll < 1 / 50 ? MEGA_PAYOUTS : tierRoll < 1 / 10 ? SUPER_PAYOUTS : NORMAL_PAYOUTS
+  const payoutPct = weightedPick(table).pct
+  const tier = tierForPct(payoutPct)
   return {
     id: Date.now(),
     wallet: holder.wallet,
     payoutPct,
     solAmount: Number(((treasury * payoutPct) / 100).toFixed(3)),
-    tier: tierForPct(payoutPct),
+    tier,
     ballColor: holder.color,
     proof: makeProof(`${Date.now()}:${holder.wallet}:${payoutPct}`),
   }
@@ -151,7 +169,7 @@ function useReducedMotion() {
 
 function ChromeClaw({ progress, scale, tier }: { progress: number; scale: number; tier: RoundResult["tier"] }) {
   const closeAmount = progress > 0.34 && progress < 0.82 ? 1 : Math.max(0, 1 - Math.abs(progress - 0.68) * 4)
-  const glow = tier === "super" ? 0.75 : tier === "glow" ? 0.28 : 0.06
+  const glow = tier === "mega" ? 1.1 : tier === "super" ? 0.48 : 0.08
 
   return (
     <group scale={scale}>
@@ -202,7 +220,7 @@ function WinnerBall({
         roughness={0.22}
         metalness={0.08}
         emissive="#ffb703"
-        emissiveIntensity={tier === "super" ? 0.9 : tier === "glow" ? 0.35 : 0.08}
+        emissiveIntensity={tier === "mega" ? 1.15 : tier === "super" ? 0.45 : 0.08}
       />
     </mesh>
   )
@@ -236,7 +254,7 @@ function makeHolderBalls(isMobile: boolean): HolderBall[] {
 function HolderBallField({ active, tier }: { active: boolean; tier: RoundResult["tier"] }) {
   const group = useRef<THREE.Group>(null)
   const balls = useMemo(() => makeHolderBalls(typeof window !== "undefined" && window.innerWidth < 700), [])
-  const glow = tier === "super" ? 0.34 : tier === "glow" ? 0.14 : 0.03
+  const glow = tier === "mega" ? 0.48 : tier === "super" ? 0.22 : 0.06
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime
@@ -269,11 +287,11 @@ function HolderBallField({ active, tier }: { active: boolean; tier: RoundResult[
         <mesh key={`${ball.holder.wallet}-${index}`} position={ball.home} scale={ball.radius}>
           <sphereGeometry args={[1, 18, 12]} />
           <meshPhysicalMaterial
-            color={ball.holder.color}
-            clearcoat={0.85}
-            clearcoatRoughness={0.18}
-            roughness={0.28}
-            metalness={0.04}
+            color={index % 3 === 0 ? "#f7c948" : ball.holder.color}
+            clearcoat={0.96}
+            clearcoatRoughness={0.11}
+            roughness={0.18}
+            metalness={index % 3 === 0 ? 0.42 : 0.12}
             emissive={ball.holder.color}
             emissiveIntensity={glow}
           />
@@ -353,7 +371,7 @@ function ClawScene({
     <>
       <ambientLight intensity={0.72} />
       <directionalLight position={[2, 3, 4]} intensity={2.1} />
-      <pointLight position={[0, 1.3, 2.4]} intensity={tier === "super" ? 4.2 : 1.6} color="#ffd166" />
+      <pointLight position={[0, 1.3, 2.4]} intensity={tier === "mega" ? 5.8 : tier === "super" ? 3.2 : 1.6} color="#ffd166" />
       <Environment preset="warehouse" />
       <HolderBallField active={token > 0 && progress < 0.75} tier={tier} />
       <group ref={claw} position={CLAW_ALIGNMENT.rest}>
@@ -428,7 +446,7 @@ export function ClawArena() {
         setSlotSpinning(false)
         setDrawing(false)
         setNextDraw(60 + Math.floor(Math.random() * 121))
-        playTone(result.tier === "super" ? 660 : 420, 0.28, "triangle")
+        playTone(result.tier === "mega" ? 820 : result.tier === "super" ? 660 : 420, 0.28, "triangle")
       }, 980)
     },
     [playTone],
@@ -516,7 +534,7 @@ export function ClawArena() {
 
       <section className="jackpot-stack" aria-label="Round status">
         <div className="jackpot-card">
-          <span>Jackpot</span>
+          <span>Jackpot fund</span>
           <strong>{jackpotLabel}</strong>
         </div>
         <div className="countdown-card">
@@ -554,7 +572,7 @@ export function ClawArena() {
 
       <div className="how-panel">
         <strong>How it works</strong>
-        <span>Hold 500K+ $CLAW. Every holder is a ball. Backend picks the winner, this layer only shows the 3D grab.</span>
+        <span>100% of fees feed the jackpot. Every 1-3 minutes the claw picks a holder ball, then spins for a payout: normal 1-15%, super 15-50%, mega claw 50-100%.</span>
       </div>
 
       <div className="links-panel">
