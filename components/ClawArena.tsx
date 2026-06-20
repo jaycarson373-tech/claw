@@ -1,48 +1,66 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Activity, Radio, Volume2, Zap } from "lucide-react"
+import { Canvas, useFrame } from "@react-three/fiber"
+import { Environment } from "@react-three/drei"
+import { ExternalLink, Info, Link as LinkIcon, Volume2 } from "lucide-react"
 import * as THREE from "three"
+
+const CLAW_ALIGNMENT = {
+  rest: new THREE.Vector3(-0.1, 1.32, 0),
+  pileTarget: new THREE.Vector3(-0.58, -0.55, 0),
+  lift: new THREE.Vector3(-0.58, 1.12, 0),
+  chute: new THREE.Vector3(1.35, -1.22, 0),
+  returnLift: new THREE.Vector3(0.16, 1.16, 0),
+  scale: 0.76,
+  mobileScale: 0.62,
+}
+
+const ROUND_MS = 5200
+const TOKEN_ADDRESS = "2kGKRpTCtoSyDamtd3a2n8LaYWwf4sZjKMA49CCwpump"
+const PUMP_URL = `https://pump.fun/coin/${TOKEN_ADDRESS}`
+const CABINET_IMAGE_URL = "https://clawmachinesol.fun/claw-machine.png"
 
 type Holder = {
   wallet: string
   supply: number
-  color: number
-  radius: number
+  color: string
 }
 
-type Draw = {
+type RoundResult = {
   id: number
   wallet: string
-  rewardPct: number
-  amount: number
+  payoutPct: number
+  solAmount: number
+  tier: "normal" | "glow" | "super"
+  ballColor: string
   proof: string
+}
+
+type WinnerRow = RoundResult & {
   time: string
 }
 
 const HOLDERS: Holder[] = [
-  { wallet: "9cL4...r8QP", supply: 18_400, color: 0xbaff77, radius: 0.44 },
-  { wallet: "4mVy...K2a9", supply: 9_800, color: 0x67e8f9, radius: 0.36 },
-  { wallet: "HE2p...xM11", supply: 7_100, color: 0xf7c948, radius: 0.33 },
-  { wallet: "2Xn8...PqR7", supply: 5_600, color: 0xff6b6b, radius: 0.3 },
-  { wallet: "G7sz...T44d", supply: 4_200, color: 0xf4f0bb, radius: 0.27 },
-  { wallet: "Aar1...zZ90", supply: 3_050, color: 0xc084fc, radius: 0.25 },
-  { wallet: "6Qop...Jn8v", supply: 2_150, color: 0x7dd3fc, radius: 0.22 },
-  { wallet: "B0nK...M8tr", supply: 1_200, color: 0xfca5a5, radius: 0.19 },
+  { wallet: "9cL4...r8QP", supply: 18_400, color: "#ffd166" },
+  { wallet: "4mVy...K2a9", supply: 9_800, color: "#7dd3fc" },
+  { wallet: "HE2p...xM11", supply: 7_100, color: "#fca5a5" },
+  { wallet: "2Xn8...PqR7", supply: 5_600, color: "#bef264" },
+  { wallet: "G7sz...T44d", supply: 4_200, color: "#c084fc" },
+  { wallet: "Aar1...zZ90", supply: 3_050, color: "#fef08a" },
 ]
 
-const REWARD_ODDS = [
-  { pct: 1, weight: 38 },
-  { pct: 3, weight: 25 },
+const PAYOUTS = [
+  { pct: 1, weight: 36 },
+  { pct: 3, weight: 28 },
   { pct: 5, weight: 18 },
-  { pct: 10, weight: 10 },
-  { pct: 25, weight: 5 },
-  { pct: 50, weight: 2 },
-  { pct: 75, weight: 1.25 },
-  { pct: 100, weight: 0.75 },
+  { pct: 8, weight: 9 },
+  { pct: 10, weight: 5 },
+  { pct: 15, weight: 3 },
+  { pct: 25, weight: 1 },
 ]
 
-const slotFlash = [1, 3, 5, 10, 25, 50, 75, 100]
+const slotFlash = [1, 3, 5, 8, 10, 15, 25]
 
 function weightedPick<T extends { weight?: number; supply?: number }>(items: T[]) {
   const total = items.reduce((sum, item) => sum + (item.weight ?? item.supply ?? 0), 0)
@@ -62,9 +80,13 @@ function makeProof(seed: string) {
     hash ^= seed.charCodeAt(i)
     hash = Math.imul(hash, 16777619)
   }
-  const left = (hash >>> 0).toString(16).padStart(8, "0")
-  const right = Math.imul(hash, 2654435761).toString(16).replace("-", "f").slice(0, 8)
-  return `0x${left}${right}`
+  return `0x${(hash >>> 0).toString(16).padStart(8, "0")}${Math.abs(Math.imul(hash, 2654435761)).toString(16).slice(0, 8)}`
+}
+
+function tierForPct(pct: number): RoundResult["tier"] {
+  if (pct >= 10) return "super"
+  if (pct >= 5) return "glow"
+  return "normal"
 }
 
 function secondsLabel(value: number) {
@@ -73,30 +95,203 @@ function secondsLabel(value: number) {
   return `${mins}:${secs}`
 }
 
+// Replace this adapter with the real backend round record. The animation only reads this result.
+function resolveRoundResult(treasury: number): RoundResult {
+  const holder = weightedPick(HOLDERS)
+  const payoutPct = weightedPick(PAYOUTS).pct
+  return {
+    id: Date.now(),
+    wallet: holder.wallet,
+    payoutPct,
+    solAmount: Number(((treasury * payoutPct) / 100).toFixed(3)),
+    tier: tierForPct(payoutPct),
+    ballColor: holder.color,
+    proof: makeProof(`${Date.now()}:${holder.wallet}:${payoutPct}`),
+  }
+}
+
+function easeInOut(t: number) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+}
+
+function mixVec(a: THREE.Vector3, b: THREE.Vector3, t: number) {
+  return a.clone().lerp(b, easeInOut(Math.min(1, Math.max(0, t))))
+}
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const update = () => setReduced(media.matches)
+    update()
+    media.addEventListener("change", update)
+    return () => media.removeEventListener("change", update)
+  }, [])
+
+  return reduced
+}
+
+function ChromeClaw({ progress, scale, tier }: { progress: number; scale: number; tier: RoundResult["tier"] }) {
+  const closeAmount = progress > 0.34 && progress < 0.82 ? 1 : Math.max(0, 1 - Math.abs(progress - 0.68) * 4)
+  const glow = tier === "super" ? 0.75 : tier === "glow" ? 0.28 : 0.06
+
+  return (
+    <group scale={scale}>
+      <mesh position={[0, 0.38, 0]}>
+        <cylinderGeometry args={[0.045, 0.045, 0.84, 16]} />
+        <meshStandardMaterial color="#d8d8d0" metalness={1} roughness={0.13} emissive="#ffc94a" emissiveIntensity={glow} />
+      </mesh>
+      <mesh position={[0, -0.08, 0]}>
+        <sphereGeometry args={[0.16, 24, 16]} />
+        <meshStandardMaterial color="#f1f1ea" metalness={1} roughness={0.1} emissive="#ffc94a" emissiveIntensity={glow} />
+      </mesh>
+      {[0, 1, 2].map((index) => {
+        const angle = (index / 3) * Math.PI * 2
+        const open = 0.66 - closeAmount * 0.36
+        return (
+          <group key={index} rotation={[0, 0, angle]} position={[Math.cos(angle) * 0.11, -0.2, Math.sin(angle) * 0.11]}>
+            <mesh rotation={[0, 0, open]} position={[0.2, -0.22, 0]}>
+              <capsuleGeometry args={[0.035, 0.56, 6, 12]} />
+              <meshStandardMaterial color="#e5e5dc" metalness={1} roughness={0.11} emissive="#ffc94a" emissiveIntensity={glow} />
+            </mesh>
+          </group>
+        )
+      })}
+    </group>
+  )
+}
+
+function WinnerBall({
+  position,
+  visible,
+  color,
+  tier,
+}: {
+  position: THREE.Vector3
+  visible: boolean
+  color: string
+  tier: RoundResult["tier"]
+}) {
+  if (!visible) return null
+
+  return (
+    <mesh position={position} scale={0.22}>
+      <sphereGeometry args={[1, 32, 18]} />
+      <meshPhysicalMaterial
+        color={color}
+        clearcoat={1}
+        clearcoatRoughness={0.12}
+        roughness={0.22}
+        metalness={0.08}
+        emissive="#ffb703"
+        emissiveIntensity={tier === "super" ? 0.9 : tier === "glow" ? 0.35 : 0.08}
+      />
+    </mesh>
+  )
+}
+
+function ClawScene({
+  round,
+  token,
+  onDone,
+  onWebGlReady,
+  reduced,
+}: {
+  round: RoundResult | null
+  token: number
+  onDone: () => void
+  onWebGlReady: () => void
+  reduced: boolean
+}) {
+  const [progress, setProgress] = useState(0)
+  const startRef = useRef(0)
+  const doneRef = useRef(token)
+  const claw = useRef<THREE.Group>(null)
+  const tier = round?.tier ?? "normal"
+  const scale = typeof window !== "undefined" && window.innerWidth < 700 ? CLAW_ALIGNMENT.mobileScale : CLAW_ALIGNMENT.scale
+
+  useEffect(() => {
+    startRef.current = performance.now()
+    doneRef.current = 0
+    if (reduced && token > 0) {
+      window.setTimeout(onDone, 450)
+    }
+  }, [onDone, reduced, token])
+
+  useEffect(() => {
+    onWebGlReady()
+  }, [onWebGlReady])
+
+  useFrame(({ clock }) => {
+    const elapsed = token > 0 ? performance.now() - startRef.current : 0
+    const p = token > 0 ? Math.min(1, elapsed / ROUND_MS) : 0
+    setProgress(p)
+
+    let position = CLAW_ALIGNMENT.rest
+    if (p < 0.18) position = mixVec(CLAW_ALIGNMENT.rest, CLAW_ALIGNMENT.pileTarget.clone().setY(CLAW_ALIGNMENT.rest.y), p / 0.18)
+    else if (p < 0.36) position = mixVec(CLAW_ALIGNMENT.pileTarget.clone().setY(CLAW_ALIGNMENT.rest.y), CLAW_ALIGNMENT.pileTarget, (p - 0.18) / 0.18)
+    else if (p < 0.56) position = mixVec(CLAW_ALIGNMENT.pileTarget, CLAW_ALIGNMENT.lift, (p - 0.36) / 0.2)
+    else if (p < 0.75) position = mixVec(CLAW_ALIGNMENT.lift, CLAW_ALIGNMENT.chute.clone().setY(CLAW_ALIGNMENT.lift.y), (p - 0.56) / 0.19)
+    else if (p < 0.86) position = mixVec(CLAW_ALIGNMENT.chute.clone().setY(CLAW_ALIGNMENT.lift.y), CLAW_ALIGNMENT.chute, (p - 0.75) / 0.11)
+    else position = mixVec(CLAW_ALIGNMENT.returnLift, CLAW_ALIGNMENT.rest, (p - 0.86) / 0.14)
+
+    if (claw.current) {
+      claw.current.position.copy(position)
+      claw.current.rotation.z = Math.sin(clock.elapsedTime * 2.4) * 0.025
+    }
+
+    if (p === 1 && token > 0 && doneRef.current !== token) {
+      doneRef.current = token
+      onDone()
+    }
+  })
+
+  const clawPosition = claw.current?.position ?? CLAW_ALIGNMENT.rest
+  const grabbed = token > 0 && progress > 0.34 && progress < 0.78
+  const dropping = token > 0 && progress >= 0.78 && progress < 0.9
+  const dropY = CLAW_ALIGNMENT.chute.y - (progress - 0.78) * 2.2
+  const ballPosition = grabbed
+    ? clawPosition.clone().add(new THREE.Vector3(0, -0.46 * scale, 0))
+    : dropping
+      ? new THREE.Vector3(CLAW_ALIGNMENT.chute.x, dropY, 0)
+      : CLAW_ALIGNMENT.chute.clone().setY(-2.4)
+
+  return (
+    <>
+      <ambientLight intensity={0.72} />
+      <directionalLight position={[2, 3, 4]} intensity={2.1} />
+      <pointLight position={[0, 1.3, 2.4]} intensity={tier === "super" ? 4.2 : 1.6} color="#ffd166" />
+      <Environment preset="warehouse" />
+      <group ref={claw} position={CLAW_ALIGNMENT.rest}>
+        <ChromeClaw progress={progress} scale={scale} tier={tier} />
+      </group>
+      <WinnerBall position={ballPosition} visible={token > 0 && progress > 0.32 && progress < 0.92} color={round?.ballColor ?? "#ffd166"} tier={tier} />
+    </>
+  )
+}
+
 export function ClawArena() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const sceneApi = useRef<{
-    pulse: (winnerIndex: number) => void
-    treasury: () => void
-  } | null>(null)
-
   const [treasury, setTreasury] = useState(118.42)
-  const [nextDraw, setNextDraw] = useState(11)
-  const [nextSweep, setNextSweep] = useState(28)
-  const [winner, setWinner] = useState(HOLDERS[0].wallet)
-  const [rewardPct, setRewardPct] = useState(5)
-  const [proof, setProof] = useState("0xwaiting-for-vrf-feed")
-  const [slotValue, setSlotValue] = useState(5)
-  const [spinning, setSpinning] = useState(false)
+  const [nextDraw, setNextDraw] = useState(120)
+  const [round, setRound] = useState<RoundResult | null>(null)
+  const [lastReveal, setLastReveal] = useState<RoundResult | null>(null)
+  const [winners, setWinners] = useState<WinnerRow[]>([])
+  const [slotValue, setSlotValue] = useState(1)
+  const [slotSpinning, setSlotSpinning] = useState(false)
   const [drawing, setDrawing] = useState(false)
-  const [ledger, setLedger] = useState<Draw[]>([])
-  const [muted, setMuted] = useState(true)
+  const [animationToken, setAnimationToken] = useState(0)
+  const [soundOn, setSoundOn] = useState(false)
+  const [webGlReady, setWebGlReady] = useState(true)
+  const completedRound = useRef<number | null>(null)
+  const reduced = useReducedMotion()
 
-  const totalSupply = useMemo(() => HOLDERS.reduce((sum, holder) => sum + holder.supply, 0), [])
+  const jackpotLabel = `${treasury.toFixed(2)} SOL`
+  const latestTier = lastReveal?.tier ?? "normal"
 
   const playTone = useCallback(
     (frequency: number, duration = 0.16, type: OscillatorType = "sine") => {
-      if (muted) return
+      if (!soundOn) return
       const AudioContextCtor = window.AudioContext || window.webkitAudioContext
       const audio = new AudioContextCtor()
       const oscillator = audio.createOscillator()
@@ -104,371 +299,177 @@ export function ClawArena() {
       oscillator.frequency.value = frequency
       oscillator.type = type
       gain.gain.setValueAtTime(0.0001, audio.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.15, audio.currentTime + 0.015)
+      gain.gain.exponentialRampToValueAtTime(0.14, audio.currentTime + 0.02)
       gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration)
       oscillator.connect(gain)
       gain.connect(audio.destination)
       oscillator.start()
       oscillator.stop(audio.currentTime + duration)
     },
-    [muted],
+    [soundOn],
   )
 
-  const runDraw = useCallback(() => {
-    if (drawing) return
+  const finishRound = useCallback(
+    (result: RoundResult) => {
+      if (completedRound.current === result.id) return
+      completedRound.current = result.id
 
-    setDrawing(true)
-    setSpinning(true)
-    playTone(96, 0.22, "sawtooth")
-
-    const flashTimer = window.setInterval(() => {
-      setSlotValue(slotFlash[Math.floor(Math.random() * slotFlash.length)])
-    }, 90)
-
-    window.setTimeout(() => {
-      const holder = weightedPick(HOLDERS)
-      const reward = weightedPick(REWARD_ODDS).pct
-      const seed = `${Date.now()}:${holder.wallet}:${reward}:${Math.random()}`
-      const nextProof = makeProof(seed)
-      const payout = Number(((treasury * reward) / 100).toFixed(3))
-      const winnerIndex = HOLDERS.findIndex((item) => item.wallet === holder.wallet)
-
-      window.clearInterval(flashTimer)
-      setWinner(holder.wallet)
-      setRewardPct(reward)
-      setSlotValue(reward)
-      setProof(nextProof)
-      setTreasury((current) => Number(Math.max(0, current - payout).toFixed(3)))
-      setLedger((current) =>
+      setLastReveal(result)
+      setTreasury((balance) => Number(Math.max(0, balance - result.solAmount).toFixed(3)))
+      setWinners((current) =>
         [
           {
-            id: Date.now(),
-            wallet: holder.wallet,
-            rewardPct: reward,
-            amount: payout,
-            proof: nextProof,
+            ...result,
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
           ...current,
         ].slice(0, 5),
       )
-      setSpinning(false)
-      sceneApi.current?.pulse(Math.max(0, winnerIndex))
-      playTone(420 + reward * 4, 0.28, "triangle")
-
+      setSlotSpinning(true)
+      const timer = window.setInterval(() => {
+        setSlotValue(slotFlash[Math.floor(Math.random() * slotFlash.length)])
+      }, 70)
       window.setTimeout(() => {
+        window.clearInterval(timer)
+        setSlotValue(result.payoutPct)
+        setSlotSpinning(false)
         setDrawing(false)
         setNextDraw(60 + Math.floor(Math.random() * 121))
-      }, 1300)
-    }, 2150)
-  }, [drawing, playTone, treasury])
+        playTone(result.tier === "super" ? 660 : 420, 0.28, "triangle")
+      }, 980)
+    },
+    [playTone],
+  )
+
+  const completeRound = useCallback(() => {
+    if (round) finishRound(round)
+  }, [finishRound, round])
+
+  const startDraw = useCallback(() => {
+    if (drawing) return
+    const result = resolveRoundResult(treasury)
+    completedRound.current = null
+    setRound(result)
+    setLastReveal(null)
+    setDrawing(true)
+    setAnimationToken((value) => value + 1)
+    playTone(120, 0.2, "sawtooth")
+
+    window.setTimeout(() => {
+      finishRound(result)
+    }, ROUND_MS + 1100)
+  }, [drawing, finishRound, playTone, treasury])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setNextDraw((current) => {
-        if (current <= 1) {
-          runDraw()
+      setNextDraw((value) => {
+        if (value <= 1) {
+          startDraw()
           return 999
         }
-        return current - 1
+        return value - 1
       })
-
-      setNextSweep((current) => {
-        if (current <= 1) {
-          setTreasury((balance) => Number((balance + 4.75 + Math.random() * 5.5).toFixed(3)))
-          sceneApi.current?.treasury()
-          playTone(184, 0.18, "square")
-          return 300
-        }
-        return current - 1
-      })
+      setTreasury((value) => Number((value + 0.012).toFixed(3)))
     }, 1000)
-
     return () => window.clearInterval(timer)
-  }, [playTone, runDraw])
+  }, [startDraw])
 
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setClearColor(0x050606, 1)
-
-    const scene = new THREE.Scene()
-    scene.fog = new THREE.FogExp2(0x070908, 0.045)
-
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120)
-    camera.position.set(0, 5.2, 17)
-
-    const group = new THREE.Group()
-    scene.add(group)
-
-    const ambient = new THREE.HemisphereLight(0xc8ffd4, 0x14130e, 1.1)
-    scene.add(ambient)
-
-    const key = new THREE.PointLight(0xc6ff8e, 9, 42)
-    key.position.set(0, 9, 5)
-    scene.add(key)
-
-    const red = new THREE.PointLight(0xff5757, 2.2, 18)
-    red.position.set(-6, 4, 2)
-    scene.add(red)
-
-    const roomMat = new THREE.MeshStandardMaterial({ color: 0x141614, roughness: 0.88, metalness: 0.08 })
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(36, 36, 32, 32), roomMat)
-    floor.rotation.x = -Math.PI / 2
-    floor.position.y = -3
-    scene.add(floor)
-
-    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(36, 20), roomMat)
-    backWall.position.set(0, 7, -11)
-    scene.add(backWall)
-
-    const sideWall = new THREE.Mesh(new THREE.PlaneGeometry(36, 20), roomMat)
-    sideWall.rotation.y = Math.PI / 2
-    sideWall.position.set(-18, 7, 0)
-    scene.add(sideWall)
-
-    const machineMat = new THREE.MeshStandardMaterial({
-      color: 0x1d2621,
-      roughness: 0.36,
-      metalness: 0.68,
-      emissive: 0x17250f,
-      emissiveIntensity: 0.2,
-    })
-    const glassMat = new THREE.MeshPhysicalMaterial({
-      color: 0x9bff9a,
-      metalness: 0,
-      roughness: 0.06,
-      transmission: 0.32,
-      transparent: true,
-      opacity: 0.26,
-    })
-
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(8, 10.8, 3.1), machineMat)
-    frame.position.y = 2.5
-    group.add(frame)
-
-    const windowBox = new THREE.Mesh(new THREE.BoxGeometry(7.34, 8.5, 3.24), glassMat)
-    windowBox.position.y = 3.1
-    group.add(windowBox)
-
-    const base = new THREE.Mesh(new THREE.BoxGeometry(9.2, 2.2, 4.2), machineMat)
-    base.position.y = -2.15
-    group.add(base)
-
-    const pegMat = new THREE.MeshStandardMaterial({ color: 0xcedfc2, roughness: 0.42, metalness: 0.5 })
-    for (let y = 0; y < 8; y += 1) {
-      for (let x = 0; x < 8; x += 1) {
-        const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.42, 12), pegMat)
-        peg.rotation.x = Math.PI / 2
-        peg.position.set((x - 3.5) * 0.82 + (y % 2 ? 0.38 : 0), 5.9 - y * 0.72, 1.75)
-        group.add(peg)
-      }
-    }
-
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.16, 0.16), pegMat)
-    rail.position.set(0, 7.9, 1.98)
-    group.add(rail)
-
-    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.1, 8), pegMat)
-    cable.position.set(0, 6.9, 1.98)
-    group.add(cable)
-
-    const claw = new THREE.Group()
-    claw.position.set(0, 5.7, 1.98)
-    group.add(claw)
-
-    const hub = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 16), machineMat)
-    claw.add(hub)
-
-    for (let i = 0; i < 3; i += 1) {
-      const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.8, 6, 10), pegMat)
-      finger.rotation.z = (i / 3) * Math.PI * 2
-      finger.rotation.x = 0.72
-      finger.position.set(Math.cos((i / 3) * Math.PI * 2) * 0.26, -0.42, Math.sin((i / 3) * Math.PI * 2) * 0.26)
-      claw.add(finger)
-    }
-
-    const balls = HOLDERS.map((holder, index) => {
-      const ballMat = new THREE.MeshStandardMaterial({
-        color: holder.color,
-        roughness: 0.35,
-        metalness: 0.18,
-        emissive: holder.color,
-        emissiveIntensity: 0.08,
-      })
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(holder.radius, 32, 18), ballMat)
-      ball.position.set((index % 4 - 1.5) * 1.45, -0.75 + Math.floor(index / 4) * 0.75, 1.35 + (index % 2) * 0.44)
-      ball.userData.home = ball.position.clone()
-      group.add(ball)
-      return ball
-    })
-
-    const resize = () => {
-      const width = window.innerWidth
-      const height = window.innerHeight
-      renderer.setSize(width, height, false)
-      camera.aspect = width / height
-      camera.updateProjectionMatrix()
-    }
-
-    let activeBall = -1
-    let pulseUntil = 0
-    let sweepUntil = 0
-    let frameId = 0
-
-    sceneApi.current = {
-      pulse: (winnerIndex) => {
-        activeBall = winnerIndex
-        pulseUntil = performance.now() + 2100
-      },
-      treasury: () => {
-        sweepUntil = performance.now() + 1300
-      },
-    }
-
-    const animate = (time: number) => {
-      frameId = window.requestAnimationFrame(animate)
-      const t = time * 0.001
-
-      group.rotation.y = Math.sin(t * 0.2) * 0.035
-      key.intensity = 8.4 + Math.sin(t * 1.8) * 1.4 + (time < sweepUntil ? 4 : 0)
-      red.intensity = 1.8 + Math.sin(t * 2.3) * 0.6
-      claw.position.x = Math.sin(t * 0.62) * 2.7
-      claw.position.y = 5.7 + Math.sin(t * 1.4) * 0.16 - (time < pulseUntil ? Math.sin((pulseUntil - time) * 0.006) * 1.25 : 0)
-      cable.scale.y = 1 + (5.7 - claw.position.y) * 0.3
-      cable.position.x = claw.position.x
-      claw.rotation.z = Math.sin(t * 2) * 0.04
-
-      balls.forEach((ball, index) => {
-        const home = ball.userData.home as THREE.Vector3
-        ball.position.x = home.x + Math.sin(t * 0.9 + index) * 0.08
-        ball.position.y = home.y + Math.abs(Math.sin(t * 1.2 + index * 0.7)) * 0.09
-        ball.rotation.x += 0.008 + index * 0.0007
-        ball.rotation.y += 0.006
-
-        if (index === activeBall && time < pulseUntil) {
-          const lift = Math.sin((1 - (pulseUntil - time) / 2100) * Math.PI)
-          ball.position.x = claw.position.x
-          ball.position.y = -0.6 + lift * 5.8
-          ball.position.z = 1.94
-          ;(ball.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.55
-        } else {
-          ;(ball.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.08
-        }
-      })
-
-      renderer.render(scene, camera)
-    }
-
-    resize()
-    window.addEventListener("resize", resize)
-    frameId = window.requestAnimationFrame(animate)
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-      window.removeEventListener("resize", resize)
-      renderer.dispose()
-      scene.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          object.geometry.dispose()
-          const material = object.material
-          if (Array.isArray(material)) material.forEach((item) => item.dispose())
-          else material.dispose()
-        }
-      })
-      sceneApi.current = null
-    }
-  }, [])
+  const links = useMemo(
+    () => [
+      { label: "Pump", href: PUMP_URL },
+      { label: "X", href: "https://x.com/search?q=%24CLAW" },
+    ],
+    [],
+  )
 
   return (
-    <main className="claw-shell">
-      <canvas ref={canvasRef} className="claw-canvas" aria-hidden="true" />
+    <main className={`claw-shell tier-${latestTier}`}>
+      <img className="cabinet-photo" src={CABINET_IMAGE_URL} alt="$CLAW arcade machine in a dark backrooms room" />
+      <div className="gold-flood" aria-hidden="true" />
+      <div className="grain-overlay" aria-hidden="true" />
+      <div className="backrooms-vignette" aria-hidden="true" />
 
-      <div className="hud">
-        <header className="topbar">
-          <div className="brand">
-            <div className="mark">
-              <Zap size={19} />
-            </div>
-            <div>
-              <h1 className="title">Claw Vault</h1>
-              <p className="subtitle">{totalSupply.toLocaleString()} weighted supply in play</p>
-            </div>
-          </div>
+      <div className="r3f-layer" aria-hidden="true">
+        {webGlReady ? (
+          <Canvas
+            orthographic
+            camera={{ position: [0, 0, 8], zoom: 120 }}
+            dpr={[1, 2]}
+            gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
+            onError={() => setWebGlReady(false)}
+          >
+            <ClawScene round={round} token={animationToken} onDone={completeRound} onWebGlReady={() => setWebGlReady(true)} reduced={reduced} />
+          </Canvas>
+        ) : (
+          <div className="css-claw-fallback">CLAW</div>
+        )}
+      </div>
 
-          <div className="signal" aria-live="polite">
-            <span className="signal-label">Latest winner</span>
-            <strong className="wallet">{winner}</strong>
-          </div>
-
-          <div className="status-row">
-            <span className="pill">
-              <Radio size={13} /> VRF proof {proof.slice(0, 10)}
-            </span>
-            <button className="pill action" type="button" onClick={() => setMuted((value) => !value)}>
-              <Volume2 size={14} /> {muted ? "Sound off" : "Sound on"}
-            </button>
-          </div>
-        </header>
-
-        <section className="center-stage" aria-label="Reward spinner">
-          <div className="slot">
-            <div className="slot-top">
-              <span>Reward balance spin</span>
-              <span>{drawing ? "claw locked" : "armed"}</span>
-            </div>
-            <div className="slot-window">
-              <div className={`slot-reel ${spinning ? "spinning" : ""}`}>
-                <span className="slot-value">{slotValue}%</span>
-              </div>
-              <div className="slot-cut" />
-            </div>
-            <div className="proof-line">
-              <span>proof</span>
-              <span>{proof}</span>
-            </div>
-          </div>
-        </section>
-
-        <footer className="bottombar">
-          <div className="panel metrics">
-            <div className="metric">
-              <span className="metric-label">Treasury</span>
-              <strong className="metric-value">{treasury.toFixed(3)} SOL</strong>
-            </div>
-            <div className="metric">
-              <span className="metric-label">Next claw</span>
-              <strong className="metric-value">{drawing ? "drawing" : secondsLabel(nextDraw)}</strong>
-            </div>
-            <div className="metric">
-              <span className="metric-label">Fee sweep</span>
-              <strong className="metric-value">{secondsLabel(nextSweep)}</strong>
-            </div>
-          </div>
-
-          <button className="action" type="button" onClick={runDraw} disabled={drawing}>
-            <Activity size={16} /> Draw now
+      <header className="site-header">
+        <div className="brand-lockup">
+          <span className="brand-name">$CLAW</span>
+          <a className="contract-link" href={PUMP_URL} target="_blank" rel="noreferrer">
+            {TOKEN_ADDRESS.slice(0, 6)}...pump <ExternalLink size={11} />
+          </a>
+        </div>
+        <nav className="site-nav">
+          <button type="button">How it works</button>
+          <button type="button">Links</button>
+          <button type="button" onClick={() => setSoundOn((value) => !value)} aria-label="Toggle sound">
+            <Volume2 size={14} /> {soundOn ? "Sound on" : "Sound off"}
           </button>
+        </nav>
+      </header>
 
-          <div className="panel ledger">
-            <div className="ledger-title">
-              <span>Payout queue</span>
-              <span>{rewardPct}% latest</span>
-            </div>
-            {(ledger.length ? ledger : [{ id: 0, time: "--:--", wallet: "awaiting first draw", rewardPct: 0, amount: 0, proof }]).map(
-              (draw) => (
-                <div className="ledger-row" key={draw.id}>
-                  <span>{draw.time}</span>
-                  <span>{draw.wallet}</span>
-                  <strong>{draw.amount ? `${draw.amount.toFixed(3)} SOL` : "ready"}</strong>
-                </div>
-              ),
-            )}
+      <section className="jackpot-stack" aria-label="Round status">
+        <div className="jackpot-card">
+          <span>Jackpot</span>
+          <strong>{jackpotLabel}</strong>
+        </div>
+        <div className="countdown-card">
+          <span />
+          <strong>{drawing ? "DRAWING" : `NEXT DRAW ${secondsLabel(nextDraw)}`}</strong>
+        </div>
+      </section>
+
+      <section className={`reveal-card ${lastReveal ? "is-visible" : ""}`} aria-live="polite">
+        <span className="eyebrow">{lastReveal ? `${lastReveal.tier} round` : "round pending"}</span>
+        <strong className="winner-wallet">{lastReveal?.wallet ?? "winner queued"}</strong>
+        <div className={`slot-readout ${slotSpinning ? "spinning" : ""}`}>{slotValue}%</div>
+        <p>{lastReveal ? `${lastReveal.solAmount.toFixed(3)} SOL sent` : "claw is lining up"}</p>
+        <code>{lastReveal?.proof ?? round?.proof ?? "0xwaiting-for-round"}</code>
+      </section>
+
+      <aside className="last-winners">
+        <div className="panel-heading">
+          <Info size={14} />
+          <span>Last winners</span>
+        </div>
+        {(winners.length ? winners : [{ id: 0, wallet: "awaiting first draw", payoutPct: 0, solAmount: 0, tier: "normal" as const, ballColor: "#ffd166", proof: "0x", time: "--:--" }]).map((winner) => (
+          <div className="winner-row" key={winner.id}>
+            <span>{winner.time}</span>
+            <strong>{winner.wallet}</strong>
+            <em>{winner.solAmount ? `${winner.payoutPct}% / ${winner.solAmount.toFixed(3)} SOL` : "ready"}</em>
           </div>
-        </footer>
+        ))}
+      </aside>
+
+      <button className="draw-button" type="button" onClick={startDraw} disabled={drawing}>
+        <LinkIcon size={15} />
+        {drawing ? "Claw running" : "Run visual draw"}
+      </button>
+
+      <div className="how-panel">
+        <strong>How it works</strong>
+        <span>Hold 500K+ $CLAW. Every holder is a ball. Backend picks the winner, this layer only shows the 3D grab.</span>
+      </div>
+
+      <div className="links-panel">
+        {links.map((link) => (
+          <a href={link.href} key={link.label} target="_blank" rel="noreferrer">
+            {link.label}
+          </a>
+        ))}
       </div>
     </main>
   )
