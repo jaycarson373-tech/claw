@@ -2,8 +2,8 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Claw Vault",
-  description: "A giant provable-random claw machine for weighted holder rewards.",
+  title: "$CLAW - Every Holder Is a Ball",
+  description: "A photoreal claw machine with a real 3D claw reveal layer for holder rewards.",
 }
 
 export default function RootLayout({
