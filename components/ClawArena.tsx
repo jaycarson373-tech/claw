@@ -1,34 +1,34 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Canvas, useFrame } from "@react-three/fiber"
 import { Environment } from "@react-three/drei"
 import { ExternalLink, Info, Link as LinkIcon, Volume2 } from "lucide-react"
 import * as THREE from "three"
 
 const CLAW_ALIGNMENT = {
-  rest: new THREE.Vector3(-0.1, 1.32, 0),
-  pileTarget: new THREE.Vector3(-0.58, -0.55, 0),
-  lift: new THREE.Vector3(-0.58, 1.12, 0),
-  chute: new THREE.Vector3(1.35, -1.22, 0),
-  returnLift: new THREE.Vector3(0.16, 1.16, 0),
-  scale: 0.76,
-  mobileScale: 0.62,
+  rest: new THREE.Vector3(0, 1.28, 0),
+  pileTarget: new THREE.Vector3(-0.42, -0.36, 0),
+  lift: new THREE.Vector3(-0.42, 0.98, 0),
+  chute: new THREE.Vector3(1.28, -1.1, 0),
+  returnLift: new THREE.Vector3(0.08, 1.02, 0),
+  scale: 0.82,
+  mobileScale: 0.68,
 }
 
 const BALL_FIELD_ALIGNMENT = {
-  center: new THREE.Vector3(-0.02, -1.04, -0.28),
-  width: 2.92,
-  height: 1.02,
-  depth: 0.24,
-  count: 26,
-  mobileCount: 16,
+  center: new THREE.Vector3(0, -0.76, -0.34),
+  width: 3.22,
+  height: 1.08,
+  depth: 0.28,
+  count: 34,
+  mobileCount: 20,
 }
 
 const ROUND_MS = 5200
 const TOKEN_ADDRESS = "2kGKRpTCtoSyDamtd3a2n8LaYWwf4sZjKMA49CCwpump"
 const PUMP_URL = `https://pump.fun/coin/${TOKEN_ADDRESS}`
-const CABINET_IMAGE_URL = "https://clawmachinesol.fun/claw-machine.png"
+const CABINET_IMAGE_URL = "data:image/jpeg;base64,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"
 
 type Holder = {
   wallet: string
@@ -52,10 +52,10 @@ type WinnerRow = RoundResult & {
 
 const HOLDERS: Holder[] = [
   { wallet: "9cL4...r8QP", supply: 18_400, color: "#fff0a6" },
-  { wallet: "4mVy...K2a9", supply: 9_800, color: "#7dd3fc" },
-  { wallet: "HE2p...xM11", supply: 7_100, color: "#ff9fb0" },
-  { wallet: "2Xn8...PqR7", supply: 5_600, color: "#c6ff6f" },
-  { wallet: "G7sz...T44d", supply: 4_200, color: "#d8a8ff" },
+  { wallet: "4mVy...K2a9", supply: 9_800, color: "#2fd8ff" },
+  { wallet: "HE2p...xM11", supply: 7_100, color: "#ff4b2f" },
+  { wallet: "2Xn8...PqR7", supply: 5_600, color: "#72ff3f" },
+  { wallet: "G7sz...T44d", supply: 4_200, color: "#ff8b39" },
   { wallet: "Aar1...zZ90", supply: 3_050, color: "#ffe27a" },
 ]
 
@@ -65,6 +65,16 @@ type HolderBall = {
   velocity: THREE.Vector3
   radius: number
   phase: number
+}
+
+type HolderSprite = {
+  holder: Holder
+  x: number
+  y: number
+  size: number
+  delay: number
+  duration: number
+  gold: boolean
 }
 
 const NORMAL_PAYOUTS = [
@@ -231,22 +241,45 @@ function makeHolderBalls(isMobile: boolean): HolderBall[] {
 
   return Array.from({ length: count }, (_, index) => {
     const holder = HOLDERS[index % HOLDERS.length]
-    const row = Math.floor(index / 6)
-    const col = index % 6
-    const jitterX = ((index * 37) % 19) / 19 - 0.5
-    const jitterY = ((index * 23) % 17) / 17 - 0.5
+    const randA = (Math.sin(index * 12.9898) * 43758.5453) % 1
+    const randB = (Math.sin(index * 78.233) * 24634.6345) % 1
+    const randC = (Math.sin(index * 39.425) * 13515.3719) % 1
+    const xRand = Math.abs(randA)
+    const yRand = Math.abs(randB)
+    const zRand = Math.abs(randC)
     const supplyScale = Math.sqrt(holder.supply / HOLDERS[0].supply)
+    const mound = Math.sin(xRand * Math.PI)
+    const pileY = -0.54 + yRand * 0.68 * mound
 
     return {
       holder,
       home: new THREE.Vector3(
-        BALL_FIELD_ALIGNMENT.center.x + (col - 2.5) * (BALL_FIELD_ALIGNMENT.width / 6) + jitterX * 0.18,
-        BALL_FIELD_ALIGNMENT.center.y + (row - 1.6) * 0.32 + jitterY * 0.16,
-        BALL_FIELD_ALIGNMENT.center.z + ((index % 3) - 1) * BALL_FIELD_ALIGNMENT.depth,
+        BALL_FIELD_ALIGNMENT.center.x + (xRand - 0.5) * BALL_FIELD_ALIGNMENT.width,
+        BALL_FIELD_ALIGNMENT.center.y + pileY,
+        BALL_FIELD_ALIGNMENT.center.z + (zRand - 0.5) * BALL_FIELD_ALIGNMENT.depth,
       ),
       velocity: new THREE.Vector3(Math.sin(index * 1.7) * 0.006, Math.cos(index * 2.1) * 0.006, Math.sin(index * 0.9) * 0.002),
-      radius: 0.078 + supplyScale * 0.058,
+      radius: 0.086 + supplyScale * 0.064,
       phase: index * 0.71,
+    }
+  })
+}
+
+function makeHolderSprites(): HolderSprite[] {
+  return Array.from({ length: 32 }, (_, index) => {
+    const holder = HOLDERS[index % HOLDERS.length]
+    const randA = Math.abs((Math.sin(index * 12.9898) * 43758.5453) % 1)
+    const randB = Math.abs((Math.sin(index * 78.233) * 24634.6345) % 1)
+    const supplyScale = Math.sqrt(holder.supply / HOLDERS[0].supply)
+
+    return {
+      holder,
+      x: 22 + randA * 56,
+      y: 58 + randB * 28,
+      size: 34 + supplyScale * 34,
+      delay: -index * 0.19,
+      duration: 3.8 + (index % 7) * 0.32,
+      gold: index % 4 === 0 || index % 7 === 0,
     }
   })
 }
@@ -263,7 +296,7 @@ function HolderBallField({ active, tier }: { active: boolean; tier: RoundResult[
     group.current.children.forEach((child, index) => {
       const ball = balls[index]
       if (!ball) return
-      const mesh = child as THREE.Mesh
+      const mesh = child as THREE.Object3D
       const wake = active ? 1.8 : 1
       const driftX = Math.sin(t * (0.78 + index * 0.015) + ball.phase) * 0.075 * wake
       const driftY = Math.cos(t * (1.06 + index * 0.01) + ball.phase * 1.2) * 0.055 * wake
@@ -284,18 +317,28 @@ function HolderBallField({ active, tier }: { active: boolean; tier: RoundResult[
   return (
     <group ref={group}>
       {balls.map((ball, index) => (
-        <mesh key={`${ball.holder.wallet}-${index}`} position={ball.home} scale={ball.radius}>
-          <sphereGeometry args={[1, 18, 12]} />
-          <meshPhysicalMaterial
-            color={index % 3 === 0 ? "#f7c948" : ball.holder.color}
-            clearcoat={0.96}
-            clearcoatRoughness={0.11}
-            roughness={0.18}
-            metalness={index % 3 === 0 ? 0.42 : 0.12}
-            emissive={ball.holder.color}
-            emissiveIntensity={glow}
-          />
-        </mesh>
+        <group key={`${ball.holder.wallet}-${index}`} position={ball.home} scale={ball.radius}>
+          <mesh>
+            <sphereGeometry args={[1, 22, 14]} />
+            <meshPhysicalMaterial
+              color={index % 4 === 0 || index % 7 === 0 ? "#f8c73d" : ball.holder.color}
+              clearcoat={1}
+              clearcoatRoughness={0.08}
+              roughness={0.11}
+              metalness={index % 4 === 0 || index % 7 === 0 ? 0.5 : 0.18}
+              emissive={index % 4 === 0 || index % 7 === 0 ? "#ffb300" : ball.holder.color}
+              emissiveIntensity={glow}
+            />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.82, 0.018, 6, 32]} />
+            <meshStandardMaterial color="#fff6c4" metalness={0.8} roughness={0.18} emissive="#ffd166" emissiveIntensity={glow * 0.7} />
+          </mesh>
+          <mesh position={[-0.32, 0.35, 0.72]} scale={[0.28, 0.12, 0.06]}>
+            <sphereGeometry args={[1, 12, 8]} />
+            <meshBasicMaterial color="#fff8d6" transparent opacity={0.68} />
+          </mesh>
+        </group>
       ))}
     </group>
   )
@@ -370,7 +413,8 @@ function ClawScene({
   return (
     <>
       <ambientLight intensity={0.72} />
-      <directionalLight position={[2, 3, 4]} intensity={2.1} />
+      <directionalLight position={[2, 3, 4]} intensity={2.4} color="#fff3d0" />
+      <pointLight position={[-1.8, 1.4, 2.6]} intensity={2.4} color="#ffbd45" />
       <pointLight position={[0, 1.3, 2.4]} intensity={tier === "mega" ? 5.8 : tier === "super" ? 3.2 : 1.6} color="#ffd166" />
       <Environment preset="warehouse" />
       <HolderBallField active={token > 0 && progress < 0.75} tier={tier} />
@@ -396,6 +440,7 @@ export function ClawArena() {
   const [webGlReady, setWebGlReady] = useState(true)
   const completedRound = useRef<number | null>(null)
   const reduced = useReducedMotion()
+  const holderSprites = useMemo(() => makeHolderSprites(), [])
 
   const jackpotLabel = `${treasury.toFixed(2)} SOL`
   const latestTier = lastReveal?.tier ?? "normal"
@@ -514,6 +559,25 @@ export function ClawArena() {
         ) : (
           <div className="css-claw-fallback">CLAW</div>
         )}
+      </div>
+
+      <div className="capsule-field" aria-hidden="true">
+        {holderSprites.map((ball, index) => (
+          <span
+            className={`capsule-ball ${ball.gold ? "is-gold" : ""}`}
+            key={`${ball.holder.wallet}-${index}`}
+            style={
+              {
+                "--x": `${ball.x}%`,
+                "--y": `${ball.y}%`,
+                "--size": `${ball.size}px`,
+                "--delay": `${ball.delay}s`,
+                "--duration": `${ball.duration}s`,
+                "--ball-color": ball.gold ? "#f7c948" : ball.holder.color,
+              } as CSSProperties
+            }
+          />
+        ))}
       </div>
 
       <header className="site-header">

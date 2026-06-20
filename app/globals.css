@@ -46,7 +46,9 @@ a {
   flex-direction: column;
   align-items: center;
   overflow: hidden;
-  background: #030303;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 192, 56, 0.22), transparent 38%),
+    #030303;
 }
 
 .cabinet-photo {
@@ -56,15 +58,75 @@ a {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: center 45%;
   user-select: none;
+  filter: saturate(1.2) contrast(1.08) brightness(0.92);
 }
 
 .r3f-layer {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 6;
   pointer-events: none;
+}
+
+.capsule-field {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.capsule-ball {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--size);
+  height: var(--size);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  animation: capsule-float var(--duration) ease-in-out infinite;
+  animation-delay: var(--delay);
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 245, 0.92) 0 9%, transparent 19%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 32%),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--ball-color), #ffffff 24%), var(--ball-color) 62%, color-mix(in srgb, var(--ball-color), #3b1900 36%) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.32),
+    inset 0 -10px 18px rgba(46, 20, 0, 0.28),
+    0 8px 22px rgba(0, 0, 0, 0.34),
+    0 0 18px color-mix(in srgb, var(--ball-color), transparent 52%);
+}
+
+.capsule-ball::before {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 48%;
+  height: 8%;
+  border-radius: 999px;
+  background: rgba(255, 245, 188, 0.62);
+  box-shadow: 0 0 8px rgba(255, 230, 128, 0.48);
+  content: "";
+}
+
+.capsule-ball::after {
+  position: absolute;
+  left: 24%;
+  top: 18%;
+  width: 36%;
+  height: 18%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  filter: blur(1px);
+  content: "";
+}
+
+.capsule-ball.is-gold {
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 236, 0.94) 0 9%, transparent 19%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 30%),
+    radial-gradient(circle at 50% 50%, #ffe47a, #f7c948 58%, #9b6107 100%);
 }
 
 .grain-overlay,
@@ -87,17 +149,19 @@ a {
 .backrooms-vignette {
   z-index: 3;
   background:
-    radial-gradient(circle at 50% 40%, transparent 0 42%, rgba(0, 0, 0, 0.42) 78%, rgba(0, 0, 0, 0.86) 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.54));
+    linear-gradient(90deg, rgba(0, 0, 0, 0.58), transparent 24%, transparent 76%, rgba(0, 0, 0, 0.58)),
+    radial-gradient(circle at 50% 38%, transparent 0 48%, rgba(0, 0, 0, 0.34) 78%, rgba(0, 0, 0, 0.82) 100%),
+    linear-gradient(180deg, rgba(255, 199, 74, 0.08), rgba(0, 0, 0, 0.46));
 }
 
 .gold-flood {
   z-index: 1;
-  opacity: 0;
+  opacity: 0.18;
   transition: opacity 700ms ease;
   background:
-    radial-gradient(ellipse 62% 72% at 52% 48%, rgba(255, 190, 41, 0.2), transparent 70%),
-    repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 206, 84, 0.12) 0 7deg, transparent 7deg 18deg);
+    linear-gradient(90deg, rgba(255, 220, 102, 0.2), transparent 20%, transparent 80%, rgba(255, 220, 102, 0.18)),
+    radial-gradient(ellipse 70% 76% at 52% 46%, rgba(255, 190, 41, 0.28), transparent 72%),
+    repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 206, 84, 0.1) 0 7deg, transparent 7deg 18deg);
 }
 
 .tier-super .gold-flood {
@@ -200,9 +264,9 @@ a {
 .last-winners,
 .how-panel,
 .links-panel {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.55);
-  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(255, 214, 102, 0.2);
+  background: rgba(16, 8, 0, 0.5);
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 236, 166, 0.12);
   backdrop-filter: blur(12px);
 }
 
@@ -268,6 +332,9 @@ a {
   pointer-events: none;
   text-align: center;
   transition: opacity 250ms ease, transform 250ms ease;
+  background:
+    linear-gradient(180deg, rgba(255, 208, 85, 0.12), rgba(11, 5, 0, 0.78)),
+    rgba(0, 0, 0, 0.48);
 }
 
 .reveal-card.is-visible {
@@ -430,6 +497,18 @@ a {
   50% { opacity: 0.9; filter: saturate(1.5); }
 }
 
+@keyframes capsule-float {
+  0%, 100% {
+    transform: translate(-50%, -50%) translate3d(-8px, 4px, 0) rotate(-4deg);
+  }
+  35% {
+    transform: translate(-50%, -50%) translate3d(9px, -12px, 0) rotate(7deg);
+  }
+  70% {
+    transform: translate(-50%, -50%) translate3d(-2px, -4px, 0) rotate(2deg);
+  }
+}
+
 @media (max-width: 760px) {
   .claw-shell {
     min-height: 100vh;
@@ -476,5 +555,10 @@ a {
     right: 10px;
     left: 10px;
     justify-content: center;
+  }
+
+  .capsule-ball {
+    width: calc(var(--size) * 0.72);
+    height: calc(var(--size) * 0.72);
   }
 }
