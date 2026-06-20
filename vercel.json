@@ -1,5 +1,8 @@
 {
   "framework": "nextjs",
   "buildCommand": "pnpm run build",
-  "installCommand": "pnpm install --no-frozen-lockfile"
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "env": {
+    "NEXT_PUBLIC_DEPLOY_VERSION": "r3f-claw-2026-06-20"
+  }
 }
