@@ -16,6 +16,15 @@ const CLAW_ALIGNMENT = {
   mobileScale: 0.62,
 }
 
+const BALL_FIELD_ALIGNMENT = {
+  center: new THREE.Vector3(-0.02, -1.04, -0.28),
+  width: 2.92,
+  height: 1.02,
+  depth: 0.24,
+  count: 26,
+  mobileCount: 16,
+}
+
 const ROUND_MS = 5200
 const TOKEN_ADDRESS = "2kGKRpTCtoSyDamtd3a2n8LaYWwf4sZjKMA49CCwpump"
 const PUMP_URL = `https://pump.fun/coin/${TOKEN_ADDRESS}`
@@ -49,6 +58,14 @@ const HOLDERS: Holder[] = [
   { wallet: "G7sz...T44d", supply: 4_200, color: "#c084fc" },
   { wallet: "Aar1...zZ90", supply: 3_050, color: "#fef08a" },
 ]
+
+type HolderBall = {
+  holder: Holder
+  home: THREE.Vector3
+  velocity: THREE.Vector3
+  radius: number
+  phase: number
+}
 
 const PAYOUTS = [
   { pct: 1, weight: 36 },
@@ -191,6 +208,81 @@ function WinnerBall({
   )
 }
 
+function makeHolderBalls(isMobile: boolean): HolderBall[] {
+  const count = isMobile ? BALL_FIELD_ALIGNMENT.mobileCount : BALL_FIELD_ALIGNMENT.count
+
+  return Array.from({ length: count }, (_, index) => {
+    const holder = HOLDERS[index % HOLDERS.length]
+    const row = Math.floor(index / 6)
+    const col = index % 6
+    const jitterX = ((index * 37) % 19) / 19 - 0.5
+    const jitterY = ((index * 23) % 17) / 17 - 0.5
+    const supplyScale = Math.sqrt(holder.supply / HOLDERS[0].supply)
+
+    return {
+      holder,
+      home: new THREE.Vector3(
+        BALL_FIELD_ALIGNMENT.center.x + (col - 2.5) * (BALL_FIELD_ALIGNMENT.width / 6) + jitterX * 0.18,
+        BALL_FIELD_ALIGNMENT.center.y + (row - 1.6) * 0.32 + jitterY * 0.16,
+        BALL_FIELD_ALIGNMENT.center.z + ((index % 3) - 1) * BALL_FIELD_ALIGNMENT.depth,
+      ),
+      velocity: new THREE.Vector3(Math.sin(index * 1.7) * 0.006, Math.cos(index * 2.1) * 0.006, Math.sin(index * 0.9) * 0.002),
+      radius: 0.078 + supplyScale * 0.058,
+      phase: index * 0.71,
+    }
+  })
+}
+
+function HolderBallField({ active, tier }: { active: boolean; tier: RoundResult["tier"] }) {
+  const group = useRef<THREE.Group>(null)
+  const balls = useMemo(() => makeHolderBalls(typeof window !== "undefined" && window.innerWidth < 700), [])
+  const glow = tier === "super" ? 0.34 : tier === "glow" ? 0.14 : 0.03
+
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime
+    if (!group.current) return
+
+    group.current.children.forEach((child, index) => {
+      const ball = balls[index]
+      if (!ball) return
+      const mesh = child as THREE.Mesh
+      const wake = active ? 1.8 : 1
+      const driftX = Math.sin(t * (0.78 + index * 0.015) + ball.phase) * 0.075 * wake
+      const driftY = Math.cos(t * (1.06 + index * 0.01) + ball.phase * 1.2) * 0.055 * wake
+      const bob = Math.abs(Math.sin(t * 1.34 + ball.phase)) * 0.05 * wake
+      mesh.position.set(ball.home.x + driftX, ball.home.y + driftY + bob, ball.home.z + Math.sin(t * 0.6 + ball.phase) * 0.035)
+      mesh.rotation.x += ball.velocity.x * wake
+      mesh.rotation.y += ball.velocity.y * wake
+      mesh.rotation.z += ball.velocity.z * wake
+
+      const left = BALL_FIELD_ALIGNMENT.center.x - BALL_FIELD_ALIGNMENT.width / 2
+      const right = BALL_FIELD_ALIGNMENT.center.x + BALL_FIELD_ALIGNMENT.width / 2
+      if (mesh.position.x < left + ball.radius || mesh.position.x > right - ball.radius) {
+        mesh.position.x = THREE.MathUtils.clamp(mesh.position.x, left + ball.radius, right - ball.radius)
+      }
+    })
+  })
+
+  return (
+    <group ref={group}>
+      {balls.map((ball, index) => (
+        <mesh key={`${ball.holder.wallet}-${index}`} position={ball.home} scale={ball.radius}>
+          <sphereGeometry args={[1, 18, 12]} />
+          <meshPhysicalMaterial
+            color={ball.holder.color}
+            clearcoat={0.85}
+            clearcoatRoughness={0.18}
+            roughness={0.28}
+            metalness={0.04}
+            emissive={ball.holder.color}
+            emissiveIntensity={glow}
+          />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
 function ClawScene({
   round,
   token,
@@ -263,6 +355,7 @@ function ClawScene({
       <directionalLight position={[2, 3, 4]} intensity={2.1} />
       <pointLight position={[0, 1.3, 2.4]} intensity={tier === "super" ? 4.2 : 1.6} color="#ffd166" />
       <Environment preset="warehouse" />
+      <HolderBallField active={token > 0 && progress < 0.75} tier={tier} />
       <group ref={claw} position={CLAW_ALIGNMENT.rest}>
         <ChromeClaw progress={progress} scale={scale} tier={tier} />
       </group>
