@@ -100,12 +100,12 @@ a {
     repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 206, 84, 0.12) 0 7deg, transparent 7deg 18deg);
 }
 
-.tier-glow .gold-flood {
+.tier-super .gold-flood {
   opacity: 0.38;
   animation: glow-pulse 1.8s ease-in-out infinite;
 }
 
-.tier-super .gold-flood {
+.tier-mega .gold-flood {
   opacity: 0.76;
   animation: jackpot-flow 1.15s ease-in-out infinite;
 }
