@@ -58,9 +58,17 @@ a {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 45%;
+  object-position: center;
   user-select: none;
-  filter: saturate(1.2) contrast(1.08) brightness(0.92);
+  filter: saturate(1.05) contrast(1.04) brightness(0.86);
+  transform: scale(1);
+  transition: transform 1100ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 900ms ease, object-position 900ms ease;
+}
+
+.claw-shell.is-drawing .cabinet-photo {
+  object-position: center 58%;
+  filter: saturate(1.16) contrast(1.12) brightness(0.72);
+  transform: scale(1.28);
 }
 
 .r3f-layer {
@@ -68,65 +76,85 @@ a {
   inset: 0;
   z-index: 6;
   pointer-events: none;
+  transform: scale(1);
+  transform-origin: 50% 66%;
+  transition: transform 1100ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.claw-shell.is-drawing .r3f-layer {
+  transform: scale(1.42) translateY(-4vh);
 }
 
 .capsule-field {
   position: absolute;
   inset: 0;
   z-index: 5;
+  opacity: 0.32;
   pointer-events: none;
+  transform: translateY(10vh) scale(0.72);
+  transform-origin: 50% 76%;
+  transition: opacity 650ms ease, transform 1100ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 900ms ease;
+  filter: blur(0.4px) brightness(0.78);
 }
 
-.capsule-ball {
+.claw-shell.is-drawing .capsule-field {
+  opacity: 1;
+  filter: blur(0) brightness(1.08);
+  transform: translateY(-2vh) scale(1.24);
+}
+
+.holder-cup {
   position: absolute;
   left: var(--x);
   top: var(--y);
   width: var(--size);
   height: var(--size);
-  border-radius: 999px;
+  border: 2px solid rgba(255, 245, 192, 0.76);
+  border-radius: 999px 999px 42% 42%;
   transform: translate(-50%, -50%);
   animation: capsule-float var(--duration) ease-in-out infinite;
   animation-delay: var(--delay);
   background:
-    radial-gradient(circle at 30% 22%, rgba(255, 255, 245, 0.92) 0 9%, transparent 19%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 32%),
-    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--ball-color), #ffffff 24%), var(--ball-color) 62%, color-mix(in srgb, var(--ball-color), #3b1900 36%) 100%);
+    radial-gradient(circle at 33% 24%, rgba(255, 255, 245, 0.85) 0 8%, transparent 18%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26), transparent 36%),
+    radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--ball-color), #ffffff 18%), var(--ball-color) 58%, color-mix(in srgb, var(--ball-color), #251000 42%) 100%);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.32),
-    inset 0 -10px 18px rgba(46, 20, 0, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 0 -14px 22px rgba(23, 10, 0, 0.34),
     0 8px 22px rgba(0, 0, 0, 0.34),
     0 0 18px color-mix(in srgb, var(--ball-color), transparent 52%);
 }
 
-.capsule-ball::before {
+.holder-cup::before {
   position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 48%;
-  height: 8%;
+  left: -8%;
+  right: -8%;
+  top: 12%;
+  height: 20%;
+  border: 2px solid rgba(255, 248, 202, 0.72);
   border-radius: 999px;
-  background: rgba(255, 245, 188, 0.62);
-  box-shadow: 0 0 8px rgba(255, 230, 128, 0.48);
+  background: linear-gradient(180deg, rgba(255, 255, 240, 0.38), rgba(255, 214, 88, 0.16));
+  box-shadow: inset 0 -4px 8px rgba(0, 0, 0, 0.28), 0 0 10px rgba(255, 230, 128, 0.38);
   content: "";
 }
 
-.capsule-ball::after {
+.holder-cup::after {
   position: absolute;
-  left: 24%;
-  top: 18%;
-  width: 36%;
-  height: 18%;
+  left: 18%;
+  top: 32%;
+  width: 46%;
+  height: 12%;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.34);
   filter: blur(1px);
   content: "";
 }
 
-.capsule-ball.is-gold {
+.holder-cup.is-gold {
   background:
-    radial-gradient(circle at 30% 22%, rgba(255, 255, 236, 0.94) 0 9%, transparent 19%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 30%),
-    radial-gradient(circle at 50% 50%, #ffe47a, #f7c948 58%, #9b6107 100%);
+    radial-gradient(circle at 33% 24%, rgba(255, 255, 236, 0.92) 0 8%, transparent 18%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 32%),
+    radial-gradient(circle at 50% 48%, #ffe47a, #f7c948 58%, #8e5706 100%);
 }
 
 .grain-overlay,
@@ -156,12 +184,16 @@ a {
 
 .gold-flood {
   z-index: 1;
-  opacity: 0.18;
+  opacity: 0.06;
   transition: opacity 700ms ease;
   background:
     linear-gradient(90deg, rgba(255, 220, 102, 0.2), transparent 20%, transparent 80%, rgba(255, 220, 102, 0.18)),
     radial-gradient(ellipse 70% 76% at 52% 46%, rgba(255, 190, 41, 0.28), transparent 72%),
     repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 206, 84, 0.1) 0 7deg, transparent 7deg 18deg);
+}
+
+.claw-shell.is-drawing .gold-flood {
+  opacity: 0.24;
 }
 
 .tier-super .gold-flood {
@@ -256,6 +288,11 @@ a {
   align-items: center;
   gap: 7px;
   margin-top: 2vh;
+  transition: transform 900ms ease;
+}
+
+.claw-shell.is-drawing .jackpot-stack {
+  transform: translateY(-6px) scale(0.96);
 }
 
 .jackpot-card,
@@ -557,8 +594,16 @@ a {
     justify-content: center;
   }
 
-  .capsule-ball {
+  .holder-cup {
     width: calc(var(--size) * 0.72);
     height: calc(var(--size) * 0.72);
+  }
+
+  .claw-shell.is-drawing .cabinet-photo {
+    transform: scale(1.42);
+  }
+
+  .claw-shell.is-drawing .capsule-field {
+    transform: translateY(-1vh) scale(1.08);
   }
 }
