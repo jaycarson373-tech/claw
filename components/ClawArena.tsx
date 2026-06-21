@@ -17,12 +17,12 @@ const CLAW_ALIGNMENT = {
 }
 
 const BALL_FIELD_ALIGNMENT = {
-  center: new THREE.Vector3(0, -0.76, -0.34),
-  width: 3.22,
-  height: 1.08,
+  center: new THREE.Vector3(0, -0.18, -0.42),
+  width: 2.58,
+  height: 0.82,
   depth: 0.28,
-  count: 34,
-  mobileCount: 20,
+  count: 28,
+  mobileCount: 16,
 }
 
 const ROUND_MS = 5200
@@ -249,7 +249,7 @@ function makeHolderBalls(isMobile: boolean): HolderBall[] {
     const zRand = Math.abs(randC)
     const supplyScale = Math.sqrt(holder.supply / HOLDERS[0].supply)
     const mound = Math.sin(xRand * Math.PI)
-    const pileY = -0.54 + yRand * 0.68 * mound
+    const pileY = -0.34 + yRand * 0.46 * mound
 
     return {
       holder,
@@ -259,27 +259,28 @@ function makeHolderBalls(isMobile: boolean): HolderBall[] {
         BALL_FIELD_ALIGNMENT.center.z + (zRand - 0.5) * BALL_FIELD_ALIGNMENT.depth,
       ),
       velocity: new THREE.Vector3(Math.sin(index * 1.7) * 0.006, Math.cos(index * 2.1) * 0.006, Math.sin(index * 0.9) * 0.002),
-      radius: 0.086 + supplyScale * 0.064,
+      radius: 0.058 + supplyScale * 0.046,
       phase: index * 0.71,
     }
   })
 }
 
 function makeHolderSprites(): HolderSprite[] {
-  return Array.from({ length: 30 }, (_, index) => {
+  return Array.from({ length: 34 }, (_, index) => {
     const holder = HOLDERS[index % HOLDERS.length]
     const randA = Math.abs((Math.sin(index * 12.9898) * 43758.5453) % 1)
     const randB = Math.abs((Math.sin(index * 78.233) * 24634.6345) % 1)
     const supplyScale = Math.sqrt(holder.supply / HOLDERS[0].supply)
+    const mound = Math.sin(randA * Math.PI)
 
     return {
       holder,
-      x: 20 + randA * 60,
-      y: 62 + randB * 22,
-      size: 30 + supplyScale * 48,
-      delay: -index * 0.19,
-      duration: 3.8 + (index % 7) * 0.32,
-      gold: index % 4 === 0 || index % 7 === 0,
+      x: 31 + randA * 40,
+      y: 44 + randB * (15 + mound * 8),
+      size: 16 + supplyScale * 34,
+      delay: -index * 0.23,
+      duration: 5.4 + (index % 7) * 0.38,
+      gold: index % 3 === 0 || index % 8 === 0,
     }
   })
 }
@@ -288,6 +289,7 @@ function HolderBallField({ active, tier }: { active: boolean; tier: RoundResult[
   const group = useRef<THREE.Group>(null)
   const balls = useMemo(() => makeHolderBalls(typeof window !== "undefined" && window.innerWidth < 700), [])
   const glow = tier === "mega" ? 0.48 : tier === "super" ? 0.22 : 0.06
+  const opacity = active ? 0.72 : 0.34
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime
@@ -297,11 +299,11 @@ function HolderBallField({ active, tier }: { active: boolean; tier: RoundResult[
       const ball = balls[index]
       if (!ball) return
       const mesh = child as THREE.Object3D
-      const wake = active ? 1.8 : 1
-      const driftX = Math.sin(t * (0.78 + index * 0.015) + ball.phase) * 0.075 * wake
-      const driftY = Math.cos(t * (1.06 + index * 0.01) + ball.phase * 1.2) * 0.055 * wake
-      const bob = Math.abs(Math.sin(t * 1.34 + ball.phase)) * 0.05 * wake
-      mesh.position.set(ball.home.x + driftX, ball.home.y + driftY + bob, ball.home.z + Math.sin(t * 0.6 + ball.phase) * 0.035)
+      const wake = active ? 1.15 : 0.52
+      const driftX = Math.sin(t * (0.46 + index * 0.009) + ball.phase) * 0.028 * wake
+      const driftY = Math.cos(t * (0.56 + index * 0.007) + ball.phase * 1.2) * 0.02 * wake
+      const bob = Math.abs(Math.sin(t * 0.78 + ball.phase)) * 0.018 * wake
+      mesh.position.set(ball.home.x + driftX, ball.home.y + driftY + bob, ball.home.z + Math.sin(t * 0.38 + ball.phase) * 0.018)
       mesh.rotation.x += ball.velocity.x * wake
       mesh.rotation.y += ball.velocity.y * wake
       mesh.rotation.z += ball.velocity.z * wake
@@ -323,20 +325,19 @@ function HolderBallField({ active, tier }: { active: boolean; tier: RoundResult[
             <meshPhysicalMaterial
               color={index % 4 === 0 || index % 7 === 0 ? "#f8c73d" : ball.holder.color}
               clearcoat={1}
-              clearcoatRoughness={0.08}
-              roughness={0.11}
-              metalness={index % 4 === 0 || index % 7 === 0 ? 0.5 : 0.18}
+              clearcoatRoughness={0.18}
+              roughness={0.2}
+              metalness={index % 4 === 0 || index % 7 === 0 ? 0.34 : 0.04}
               emissive={index % 4 === 0 || index % 7 === 0 ? "#ffb300" : ball.holder.color}
-              emissiveIntensity={glow}
+              emissiveIntensity={glow * 0.42}
+              transparent
+              opacity={opacity}
+              depthWrite={false}
             />
-          </mesh>
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.82, 0.018, 6, 32]} />
-            <meshStandardMaterial color="#fff6c4" metalness={0.8} roughness={0.18} emissive="#ffd166" emissiveIntensity={glow * 0.7} />
           </mesh>
           <mesh position={[-0.32, 0.35, 0.72]} scale={[0.28, 0.12, 0.06]}>
             <sphereGeometry args={[1, 12, 8]} />
-            <meshBasicMaterial color="#fff8d6" transparent opacity={0.68} />
+            <meshBasicMaterial color="#fff8d6" transparent opacity={active ? 0.36 : 0.18} depthWrite={false} />
           </mesh>
         </group>
       ))}
@@ -438,7 +439,7 @@ export function ClawArena() {
   const [animationToken, setAnimationToken] = useState(0)
   const [soundOn, setSoundOn] = useState(false)
   const [webGlReady, setWebGlReady] = useState(true)
-  const completedRound = useRef<number | null>(null)
+  completedRound = useRef<number | null>(null)
   const reduced = useReducedMotion()
   const holderSprites = useMemo(() => makeHolderSprites(), [])
 
