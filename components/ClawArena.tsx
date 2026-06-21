@@ -439,7 +439,7 @@ export function ClawArena() {
   const [animationToken, setAnimationToken] = useState(0)
   const [soundOn, setSoundOn] = useState(false)
   const [webGlReady, setWebGlReady] = useState(true)
-  completedRound = useRef<number | null>(null)
+  const completedRound = useRef<number | null>(null)
   const reduced = useReducedMotion()
   const holderSprites = useMemo(() => makeHolderSprites(), [])
 
